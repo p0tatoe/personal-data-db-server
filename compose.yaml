@@ -26,7 +26,7 @@ services:
     container_name: nginx_proxy
     restart: unless-stopped
     volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       web1:
         condition: service_healthy
@@ -53,8 +53,7 @@ services:
       timeout: 5s
       retries: 3
     networks:
-      app-network:
-        ipv4_address: 172.20.0.2
+      - app-network
 
   web1:
     <<: *web
@@ -72,7 +71,9 @@ services:
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
     networks:
-      - app-network
+      app-network:
+        # Fixed so nginx.conf can name this container as the one trusted proxy.
+        ipv4_address: 172.20.0.2
 
 volumes:
   postgres_data:
@@ -80,3 +81,8 @@ volumes:
 networks:
   app-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+          # Automatic addresses come from the upper half, so none can take .2.
+          ip_range: 172.20.0.128/25
