@@ -1,7 +1,7 @@
 FROM node:26-alpine
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm install
-COPY . .
+RUN npm ci --omit=dev
+COPY server ./server
 EXPOSE 3000
 CMD ["npm", "start"]

@@ -21,9 +21,18 @@ const SCHEMA = `
     id         integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name       text NOT NULL,
     source     text NOT NULL CHECK (source IN ('uploaded_list', 'interaction')),
+    count      integer NOT NULL DEFAULT 1,
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (name, source)
   )
+`;
+
+const query = `
+  INSERT INTO advertisers (name, source, count)
+  VALUES ($1, $2, 1)
+  ON CONFLICT (name, source)
+  DO UPDATE SET count = advertisers.count + 1
+  RETURNING *;
 `;
 
 export async function initSchema(): Promise<void> {
