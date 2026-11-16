@@ -1,3 +1,6 @@
+import { parse as parseHtml, NodeType } from "node-html-parser";
+import type { HTMLElement } from "node-html-parser";
+
 export type AdvertiserSource = "uploaded_list" | "interaction";
 
 export interface Advertiser {
@@ -61,4 +64,54 @@ export function parseAdvertisers(data: unknown): Advertiser[] {
   }
 
   return advertisers;
+}
+
+// The HTML export holds the same two lists. Each one is a table cell whose
+// first line of text is the list's label, followed by nested divs with one
+// advertiser name in each innermost div. Matching on that shape instead of
+// Facebook's generated class names (like "_2ph_") keeps this working if they
+// rename them.
+export function parseAdvertisersHtml(html: string): Advertiser[] {
+  const root = parseHtml(html);
+  const advertisers: Advertiser[] = [];
+  let foundList = false;
+
+  for (const cell of root.querySelectorAll("td")) {
+    const firstText = cell.childNodes.find(
+      (node) => node.nodeType === NodeType.TEXT_NODE && node.text.trim() !== "",
+    );
+    const source = firstText && SOURCE_BY_LABEL.get(firstText.text.trim());
+    if (source === undefined) continue;
+    foundList = true;
+
+    for (const div of cell.querySelectorAll("div")) {
+      if (!isInnermost(div)) continue;
+      const name = div.text.trim();
+      if (name !== "") advertisers.push({ name, source });
+    }
+  }
+
+  if (!foundList) {
+    throw new Error("No advertiser lists found in this HTML file");
+  }
+  return advertisers;
+}
+
+function isInnermost(element: HTMLElement): boolean {
+  return element.childNodes.every((node) => node.nodeType === NodeType.TEXT_NODE);
+}
+
+// Uploads can be either export format. JSON always starts with "{", so look
+// at the content rather than trusting the file name or the browser's type.
+export function parseUpload(text: string): Advertiser[] {
+  if (text.trimStart().startsWith("{")) {
+    let data: unknown;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error("This file looks like JSON but could not be read");
+    }
+    return parseAdvertisers(data);
+  }
+  return parseAdvertisersHtml(text);
 }

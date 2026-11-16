@@ -1,4 +1,5 @@
 import pg from "pg";
+import type { Advertiser } from "./parseAdvertisers.ts";
 
 // A pool keeps a few connections open and lends one out per query.
 // The DB_* variables are set in compose.yaml.
@@ -27,13 +28,25 @@ const SCHEMA = `
   )
 `;
 
-const query = `
+// Adds a whole upload in one statement. unnest turns the two arrays into
+// rows, GROUP BY merges duplicates within the file (a multi-row upsert fails
+// if it touches the same row twice), and ON CONFLICT adds to the count of
+// advertisers that earlier uploads already saved.
+const SAVE_ADVERTISERS = `
   INSERT INTO advertisers (name, source, count)
-  VALUES ($1, $2, 1)
+  SELECT name, source, count(*)
+  FROM unnest($1::text[], $2::text[]) AS upload(name, source)
+  GROUP BY name, source
   ON CONFLICT (name, source)
-  DO UPDATE SET count = advertisers.count + 1
-  RETURNING *;
+  DO UPDATE SET count = advertisers.count + EXCLUDED.count
 `;
+
+export async function saveAdvertisers(advertisers: Advertiser[]): Promise<void> {
+  await pool.query(SAVE_ADVERTISERS, [
+    advertisers.map((a) => a.name),
+    advertisers.map((a) => a.source),
+  ]);
+}
 
 export async function initSchema(): Promise<void> {
   const client = await pool.connect();
